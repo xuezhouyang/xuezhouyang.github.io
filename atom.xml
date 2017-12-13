@@ -1,47 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <title>Hexo</title>
+  <title>Niche</title>
   
-  
+  <subtitle>Techtalk</subtitle>
   <link href="/atom.xml" rel="self"/>
   
-  <link href="http://yoursite.com/"/>
-  <updated>2017-12-13T08:22:29.686Z</updated>
-  <id>http://yoursite.com/</id>
+  <link href="http://or.mk/"/>
+  <updated>2017-12-13T08:14:17.983Z</updated>
+  <id>http://or.mk/</id>
   
   <author>
-    <name>John Doe</name>
+    <name>Zhouyang Xue</name>
     
   </author>
   
   <generator uri="http://hexo.io/">Hexo</generator>
   
   <entry>
-    <title>New</title>
-    <link href="http://yoursite.com/2017/12/13/New/"/>
-    <id>http://yoursite.com/2017/12/13/New/</id>
-    <published>2017-12-13T08:21:32.000Z</published>
-    <updated>2017-12-13T08:22:29.686Z</updated>
-    
-    <content type="html"><![CDATA[<p>做个测试</p>]]></content>
-    
-    <summary type="html">
-    
-      
-      
-        &lt;p&gt;做个测试&lt;/p&gt;
-
-      
-    
-    </summary>
-    
-    
-  </entry>
-  
-  <entry>
     <title>Hello World</title>
-    <link href="http://yoursite.com/2017/12/13/hello-world/"/>
-    <id>http://yoursite.com/2017/12/13/hello-world/</id>
+    <link href="http://or.mk/2017/12/13/hello-world/"/>
+    <id>http://or.mk/2017/12/13/hello-world/</id>
     <published>2017-12-13T08:14:17.983Z</published>
     <updated>2017-12-13T08:14:17.983Z</updated>
     
