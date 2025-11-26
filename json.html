@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jackson Path & JSON Editor Pro</title>
+    <title>Jackson Tool Ultimate</title>
     
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -12,26 +12,39 @@
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { bg: '#0f172a', surface: '#1e293b', border: '#334155', text: '#e2e8f0', textMuted: '#94a3b8' }
+                    }
+                }
+            }
+        }
+    </script>
     
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
-            background-color: #f8fafc; 
-            overflow: hidden; 
-        }
-        .font-code { font-family: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace; }
-        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+        .font-code { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; }
+        
+        /* Custom Scrollbar */
+        .custom-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark .custom-scroll::-webkit-scrollbar-thumb { background: #475569; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
         textarea:focus { outline: none; }
         
-        /* 动画 */
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        .drawer-enter { animation: slideIn 0.3s ease-out forwards; }
-
-        /* 面板过渡动画 */
-        .panel-transition { transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-in-out; }
+        /* Animations */
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .toast-enter { animation: slideUp 0.3s ease-out forwards; }
+        
+        /* Splitter Resizer */
+        .resizer { width: 5px; cursor: col-resize; transition: background 0.2s; z-index: 10; }
+        .resizer:hover, .resizer.active { background-color: #3b82f6; }
     </style>
 </head>
 <body>
@@ -40,16 +53,15 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-        // --- Icons ---
+        // --- 1. Icons & Utilities ---
         const Icon = ({ children, className }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                {children}
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
         );
 
         const Icons = {
+            Moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+            Sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></>,
             Terminal: <><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></>,
-            Play: <polygon points="5 3 19 12 5 21 5 3" />,
             Check: <polyline points="20 6 9 17 4 12" />,
             Alert: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>,
             Copy: <><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>,
@@ -58,471 +70,481 @@
             Compress: <><polyline points="4 7 10 7 10 1" /><polyline points="20 17 14 17 14 23" /><line x1="14" y1="17" x2="21" y2="24" /><line x1="3" y1="0" x2="10" y2="7" /></>,
             ChevronRight: <polyline points="9 18 15 12 9 6" />,
             ChevronDown: <polyline points="6 9 12 15 18 9" />,
-            ChevronUp: <polyline points="18 15 12 9 6 15" />,
             Search: <><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></>,
             Shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
             History: <><path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /><path d="M12 7v5l4 2" /></>,
-            Expand: <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>,
-            Collapse: <><polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" /><line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" /></>,
-            Magic: <><path d="m2 9 3-3 3 3" /><path d="M13 2 9 6 13 10" /><path d="m16 17 3 3 3-3" /><line x1="5" x2="5" y1="6" y2="13" /><line x1="11" x2="11" y1="6" y2="23" /><line x1="19" x2="19" y1="13" y2="20" /></>,
-            // 修复: 使用 fragment <>...</> 包裹多个元素
+            Code: <><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></>,
+            Escape: <><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>,
+            Pin: <><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></>,
+            Maximize: <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>,
             X: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>
         };
 
-        // --- Core Functions ---
-        const deepFormatJson = (obj) => {
-            if (typeof obj === 'string') {
-                try {
-                    const parsed = JSON.parse(obj);
-                    if (typeof parsed === 'object' && parsed !== null) return deepFormatJson(parsed);
-                } catch (e) {}
-                return obj;
-            }
-            if (Array.isArray(obj)) return obj.map(deepFormatJson);
-            if (obj !== null && typeof obj === 'object') {
-                const newObj = {};
-                for (const key in obj) newObj[key] = deepFormatJson(obj[key]);
-                return newObj;
-            }
-            return obj;
-        };
+        // --- Java Code Generator ---
+        const generateJavaCode = (json, rootName = "Root") => {
+            let buffer = "";
+            const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+            
+            const getType = (val) => {
+                if (val === null) return "Object";
+                if (typeof val === 'string') return "String";
+                if (typeof val === 'number') return Number.isInteger(val) ? "int" : "double";
+                if (typeof val === 'boolean') return "boolean";
+                if (Array.isArray(val)) {
+                    if (val.length === 0) return "List<Object>";
+                    return `List<${getType(val[0])}>`; // Simplified assumption
+                }
+                if (typeof val === 'object') return capitalize("NestedObject"); 
+                return "Object";
+            };
 
-        const smartParseValue = (val) => {
-            if (typeof val === 'string') {
-                try {
-                    const parsed = JSON.parse(val);
-                    if (typeof parsed === 'object' && parsed !== null) return { value: parsed, isJsonString: true };
-                } catch (e) {}
-            }
-            return { value: val, isJsonString: false };
-        };
+            const generateClass = (obj, className) => {
+                let sb = `@Data\npublic class ${className} {\n`;
+                for (const key in obj) {
+                    const type = getType(obj[key]);
+                    const fieldName = key.includes('_') ? key.replace(/_([a-z])/g, (g) => g[1].toUpperCase()) : key; // camelCase
+                    
+                    if (fieldName !== key) {
+                        sb += `    @JsonProperty("${key}")\n`;
+                    }
+                    
+                    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                        const nestedClassName = capitalize(fieldName);
+                        sb += `    private ${nestedClassName} ${fieldName};\n`;
+                         // Note: In a full implementation, we'd recursively generate inner classes or separate files
+                    } else if (Array.isArray(obj[key]) && obj[key].length > 0 && typeof obj[key][0] === 'object') {
+                         sb += `    private List<${capitalize(fieldName)}Item> ${fieldName};\n`;
+                    } else {
+                        sb += `    private ${type} ${fieldName};\n`;
+                    }
+                }
+                sb += "}\n";
+                return sb;
+            };
 
-        const resolvePath = (data, pathStr) => {
-            if (!pathStr || pathStr.trim() === "") return { status: 'empty', value: null };
-            let parts = [];
-            let isPointer = pathStr.startsWith('/');
             try {
-                if (isPointer) {
-                    parts = pathStr.split('/').slice(1).map(p => p.replace(/~1/g, '/').replace(/~0/g, '~'));
-                } else {
-                    parts = pathStr.replace(/\[(\d+)\]/g, '.$1').split('.');
-                }
-            } catch (e) {
-                return { status: 'error', message: '语法错误' };
-            }
-            let current = data;
-            let traversed = [];
-            for (let i = 0; i < parts.length; i++) {
-                const key = parts[i];
-                if (current === null || typeof current !== 'object' || !(key in current)) {
-                    return { status: 'missing', pathTraversed: traversed };
-                }
-                current = current[key];
-                traversed.push(key);
-            }
-            return { status: 'found', value: current, pathTraversed: traversed };
+                const obj = JSON.parse(json);
+                if (Array.isArray(obj) && obj.length > 0) return generateClass(obj[0], rootName);
+                if (typeof obj === 'object') return generateClass(obj, rootName);
+                return "// Not an object or array";
+            } catch (e) { return "// Invalid JSON"; }
         };
 
-        // --- JsonNode Component ---
-        const JsonNode = ({ name, value, isLast, depth = 0, path = [], highlightPath, expandSignal, smartParseEnabled }) => {
+        // --- 2. Main Logic Components ---
+        
+        // Toast Notification System
+        const ToastContext = React.createContext();
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+            const addToast = (msg, type = 'success') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, msg, type }]);
+                setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2000);
+            };
+            return (
+                <ToastContext.Provider value={{ addToast }}>
+                    {children}
+                    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+                        {toasts.map(t => (
+                            <div key={t.id} className={`toast-enter px-4 py-2 rounded shadow-lg text-white text-sm font-medium ${t.type === 'error' ? 'bg-red-500' : 'bg-green-600'}`}>
+                                {t.msg}
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+        const useToast = () => React.useContext(ToastContext);
+
+        // Recursive Json Node with Search Highlighting
+        const JsonNode = React.memo(({ name, value, isLast, depth = 0, path = [], highlightPath, searchTerm, smartParse }) => {
             const [expanded, setExpanded] = useState(true);
             const { value: actualValue, isJsonString } = useMemo(() => {
-                if (smartParseEnabled) return smartParseValue(value);
+                if (smartParse && typeof value === 'string') {
+                    try { const p = JSON.parse(value); if(typeof p==='object' && p) return {value:p, isJsonString:true}; } catch(e){}
+                }
                 return { value, isJsonString: false };
-            }, [value, smartParseEnabled]);
+            }, [value, smartParse]);
 
             const isObject = actualValue !== null && typeof actualValue === 'object';
             const isArray = Array.isArray(actualValue);
             const isEmpty = isObject && Object.keys(actualValue).length === 0;
 
-            useEffect(() => {
-                if (expandSignal) setExpanded(expandSignal.action === 'expand');
-            }, [expandSignal]);
+            // Search Logic
+            const matchesSearch = useMemo(() => {
+                if (!searchTerm) return true;
+                const lowerKey = name ? String(name).toLowerCase() : "";
+                const lowerVal = (typeof actualValue !== 'object') ? String(actualValue).toLowerCase() : "";
+                return lowerKey.includes(searchTerm) || lowerVal.includes(searchTerm);
+            }, [name, actualValue, searchTerm]);
 
-            const isParentOfHighlight = useMemo(() => {
-                if (!highlightPath) return false;
-                if (path.length >= highlightPath.length) return false;
-                return path.every((p, i) => p == highlightPath[i]);
-            }, [path, highlightPath]);
+            // If children match, parent must show
+            // Note: True recursive filtering is complex in React without building a shadow tree. 
+            // Here we use a CSS-based approach or simplified expansion. 
+            // For this demo, we auto-expand if search term exists.
+            useEffect(() => { if (searchTerm) setExpanded(true); }, [searchTerm]);
 
             const isHighlighted = useMemo(() => {
                 if (!highlightPath || highlightPath.length === 0) return false;
-                if (path.length === highlightPath.length && path.every((p, i) => p == highlightPath[i])) return true;
-                return false;
+                return path.length === highlightPath.length && path.every((p, i) => p == highlightPath[i]);
             }, [path, highlightPath]);
 
-            useEffect(() => {
-                if (isParentOfHighlight) setExpanded(true);
-            }, [isParentOfHighlight]);
+            // Skip rendering if filtered out (simplified)
+            // In a real generic filter, we need to know if *any* child matches.
+            // For now, we render all but highlight matches.
+            
+            const indent = depth * 20;
 
-            const renderValue = (val) => {
-                if (val === null) return <span className="text-red-500 font-bold">null</span>;
-                if (typeof val === 'string') return <span className="text-green-600 break-all">"{val}"</span>;
-                if (typeof val === 'number') return <span className="text-blue-600">{val}</span>;
-                if (typeof val === 'boolean') return <span className="text-purple-600 font-bold">{val.toString()}</span>;
+            const toggle = (e) => { e.stopPropagation(); setExpanded(!expanded); };
+
+            const renderPrimitive = (val) => {
+                if (val === null) return <span className="text-red-500 dark:text-red-400 font-bold">null</span>;
+                if (typeof val === 'string') return <span className="text-green-600 dark:text-green-400 break-all">"{val}"</span>;
+                if (typeof val === 'number') return <span className="text-blue-600 dark:text-blue-400">{val}</span>;
+                if (typeof val === 'boolean') return <span className="text-purple-600 dark:text-purple-400 font-bold">{val.toString()}</span>;
                 return <span>{String(val)}</span>;
             };
 
-            const toggle = (e) => { e.stopPropagation(); setExpanded(!expanded); };
-            const indent = depth * 20;
+            const rowClass = `flex font-code text-sm leading-6 px-1 rounded cursor-pointer transition-colors 
+                ${isHighlighted ? 'bg-yellow-200 dark:bg-yellow-900 ring-2 ring-yellow-400 animate-pulse' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}
+                ${searchTerm && matchesSearch ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
+            `;
 
             if (isObject) {
                 const keys = Object.keys(actualValue);
                 const Opening = isArray ? '[' : '{';
                 const Closing = isArray ? ']' : '}';
-                const label = name !== null ? <span className="text-purple-700 font-semibold">"{name}": </span> : null;
-                const count = isArray ? keys.length : Object.keys(actualValue).length;
+                const label = name !== null ? <span className="text-purple-700 dark:text-purple-400 font-semibold">"{name}": </span> : null;
                 
                 return (
-                    <div className="font-code text-sm leading-6">
-                        <div className={`flex items-start hover:bg-slate-100/80 rounded px-1 cursor-pointer transition-colors ${isHighlighted ? 'bg-yellow-100 ring-2 ring-yellow-300' : ''}`} onClick={toggle}>
-                            <span style={{ width: indent }} className="flex-shrink-0 inline-block"></span>
-                            {!isEmpty && (
-                                <span className="mr-1 mt-1 text-slate-400 hover:text-slate-600 transition-transform">
-                                    <Icon children={expanded ? Icons.ChevronDown : Icons.ChevronRight} className="w-3 h-3" />
-                                </span>
-                            )}
-                            {isEmpty && <span className="w-4 inline-block"></span>}
+                    <div>
+                        <div className={rowClass} onClick={toggle}>
+                            <span style={{ width: indent }} className="shrink-0"></span>
+                            {!isEmpty && <span className="mr-1 mt-1 text-slate-400"><Icon children={expanded ? Icons.ChevronDown : Icons.ChevronRight} className="w-3 h-3"/></span>}
+                            {isEmpty && <span className="w-4"></span>}
                             {label}
-                            {isJsonString && <span className="mr-2 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded border border-amber-200 font-sans font-medium tracking-wide">JSON</span>}
-                            <span className="text-slate-500 font-medium">{Opening}</span>
-                            {!expanded && !isEmpty && <span className="text-slate-400 mx-2 bg-slate-100 px-1.5 rounded text-xs select-none">... {count} ...</span>}
-                            {!expanded && <span className="text-slate-500 font-medium">{Closing}{!isLast && ','}</span>}
+                            {isJsonString && <span className="mr-2 px-1 text-[10px] bg-amber-100 text-amber-800 rounded border border-amber-200">JSON</span>}
+                            <span className="text-slate-500 dark:text-slate-400">{Opening}</span>
+                            {!expanded && !isEmpty && <span className="text-slate-400 mx-2 text-xs">... {keys.length} items ...</span>}
+                            {!expanded && <span className="text-slate-500 dark:text-slate-400">{Closing}{!isLast && ','}</span>}
                         </div>
                         {expanded && !isEmpty && (
                             <div>
                                 {keys.map((key, idx) => (
-                                    <JsonNode key={key} name={isArray ? null : key} value={actualValue[key]} isLast={idx === keys.length - 1} depth={depth + 1} path={[...path, key]} highlightPath={highlightPath} expandSignal={expandSignal} smartParseEnabled={smartParseEnabled} />
+                                    <JsonNode key={key} name={isArray ? null : key} value={actualValue[key]} isLast={idx === keys.length - 1} depth={depth + 1} path={[...path, key]} highlightPath={highlightPath} searchTerm={searchTerm} smartParse={smartParse} />
                                 ))}
                             </div>
                         )}
                         {expanded && (
-                            <div className="hover:bg-slate-100/50">
+                            <div className="hover:bg-slate-100 dark:hover:bg-slate-800">
                                 <span style={{ width: indent + (name !== null ? 0 : 0) }} className="inline-block"></span>
-                                <span className="text-slate-500 ml-5 font-medium">{Closing}{!isLast && ','}</span>
+                                <span className="text-slate-500 dark:text-slate-400 ml-5">{Closing}{!isLast && ','}</span>
                             </div>
                         )}
                     </div>
                 );
             }
+
             return (
-                <div className={`font-code text-sm leading-6 hover:bg-slate-100/80 px-1 rounded flex ${isHighlighted ? 'bg-yellow-200 ring-2 ring-yellow-400 animate-pulse' : ''}`}>
-                    <span style={{ width: indent }} className="flex-shrink-0 inline-block"></span>
-                    <span className="w-4 inline-block"></span> 
-                    {name !== null && <span className="text-purple-700 mr-1">"{name}":</span>}
-                    {renderValue(actualValue)}
+                <div className={rowClass}>
+                    <span style={{ width: indent }} className="shrink-0"></span>
+                    <span className="w-4"></span>
+                    {name !== null && <span className="text-purple-700 dark:text-purple-400 mr-1">"{name}":</span>}
+                    {renderPrimitive(actualValue)}
                     {!isLast && <span className="text-slate-500">,</span>}
                 </div>
             );
-        };
+        });
 
-        // --- History Component ---
-        const HistoryDrawer = ({ isOpen, onClose, history, onRestore }) => {
-            if (!isOpen) return null;
-            return (
-                <div className="absolute inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-sm" onClick={onClose}>
-                    <div className="w-80 bg-white h-full shadow-2xl drawer-enter flex flex-col border-l border-slate-200" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-semibold text-slate-700 flex items-center gap-2"><Icon children={Icons.History} className="w-4 h-4" /> 历史记录</h3>
-                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
-                        </div>
-                        <div className="flex-1 overflow-auto custom-scroll p-2 space-y-2 bg-slate-50">
-                            {history.length === 0 && <div className="text-center text-slate-400 mt-10 text-sm">暂无历史记录</div>}
-                            {history.map((item) => (
-                                <div key={item.id} onClick={() => onRestore(item.content)} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-xs font-bold text-slate-500">{new Date(item.timestamp).toLocaleTimeString()}</span>
-                                        <span className="text-[10px] text-slate-300 group-hover:text-blue-400 font-mono">{(item.size / 1024).toFixed(1)} KB</span>
-                                    </div>
-                                    <div className="text-xs text-slate-600 font-mono line-clamp-2 break-all opacity-80">{item.preview}</div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        // --- App Component ---
+        // --- 3. Main Application ---
         const App = () => {
+            const { addToast } = useToast();
+            
+            // --- State ---
+            const [darkMode, setDarkMode] = useState(false);
             const [jsonStr, setJsonStr] = useState("");
             const [parsedData, setParsedData] = useState(null);
-            const [error, setError] = useState(null);
-            const [path, setPath] = useState("/data/0/val");
+            const [errorInfo, setErrorInfo] = useState(null); // { message, line }
+            
+            const [path, setPath] = useState("");
             const [pathResult, setPathResult] = useState(null);
             
-            const [history, setHistory] = useState([]);
+            // Panels & Modes
             const [showHistory, setShowHistory] = useState(false);
-            const [expandSignal, setExpandSignal] = useState(null);
-            const [smartParseEnabled, setSmartParseEnabled] = useState(false);
-            const [isPanelOpen, setIsPanelOpen] = useState(false); // 控制底部面板上浮状态
+            const [showCodeGen, setShowCodeGen] = useState(false);
+            const [smartParse, setSmartParse] = useState(false);
+            const [searchTerm, setSearchTerm] = useState("");
+            
+            // Splitter
+            const [splitPos, setSplitPos] = useState(50); // percentage
+            const isResizing = useRef(false);
 
-            const textareaRef = useRef(null);
-            const lineNumbersRef = useRef(null);
-            const saveTimeoutRef = useRef(null);
+            // Bottom Panel
+            const [panelState, setPanelState] = useState('collapsed'); // collapsed, expanded, pinned, maximized
+            
+            // Refs
+            const editorRef = useRef(null);
+            const lineRef = useRef(null);
+            const containerRef = useRef(null); // for splitter
 
+            // --- Effects ---
+            
+            // Dark Mode Class
             useEffect(() => {
-                const saved = localStorage.getItem('json_tool_history');
-                if (saved) {
-                    try {
-                        const list = JSON.parse(saved);
-                        setHistory(list);
-                        if (list.length > 0) setJsonStr(list[0].content);
-                    } catch (e) {}
-                } else {
-                    const demo = JSON.stringify({
-                        "app": "JsonToolPro",
-                        "features": ["History", "RecursiveParse", "Path"],
-                        "data": [{"id": 1, "val": "家有老人+清淡饮食要求"}, {"id": 2, "val": "This is a string"}]
-                    }, null, 4);
-                    setJsonStr(demo);
-                }
-            }, []);
+                if (darkMode) document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+            }, [darkMode]);
 
+            // JSON Parsing & Error Highlighting
             useEffect(() => {
-                if (!jsonStr.trim()) { setParsedData(null); setError(null); return; }
+                if (!jsonStr.trim()) { setParsedData(null); setErrorInfo(null); return; }
                 try {
                     const data = JSON.parse(jsonStr);
                     setParsedData(data);
-                    setError(null);
-                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                    saveTimeoutRef.current = setTimeout(() => saveToHistory(jsonStr), 2000);
+                    setErrorInfo(null);
+                    saveToHistory(jsonStr);
                 } catch (e) {
                     setParsedData(null);
-                    setError(e.message);
+                    // Extract line number from error message (Chrome/V8 format)
+                    const match = e.message.match(/at position (\d+)/);
+                    let line = 1;
+                    if (match) {
+                        const pos = parseInt(match[1]);
+                        line = jsonStr.substring(0, pos).split('\n').length;
+                    }
+                    setErrorInfo({ message: e.message, line });
                 }
             }, [jsonStr]);
 
-            const saveToHistory = (content) => {
-                setHistory(prev => {
-                    if (prev.length > 0 && prev[0].content === content) return prev;
-                    const newItem = { id: Date.now(), timestamp: Date.now(), content: content, preview: content.replace(/\s+/g, ' ').substring(0, 80), size: new Blob([content]).size };
-                    const newList = [newItem, ...prev].slice(0, 20);
-                    localStorage.setItem('json_tool_history', JSON.stringify(newList));
-                    return newList;
-                });
-            };
-
-            useEffect(() => {
-                if (parsedData) setPathResult(resolvePath(parsedData, path));
-                else setPathResult(null);
+            // Path Resolver
+            const resolvePathLogic = useCallback(() => {
+                if (!parsedData || !path) { setPathResult(null); return; }
+                // Simple resolver implementation
+                let parts = path.startsWith('/') ? 
+                    path.split('/').slice(1).map(p => p.replace(/~1/g, '/')) : 
+                    path.replace(/\[(\d+)\]/g, '.$1').split('.');
+                
+                let current = parsedData;
+                let traversed = [];
+                let status = 'found';
+                
+                for (let key of parts) {
+                    if (current === null || typeof current !== 'object' || !(key in current)) {
+                        status = 'missing'; break;
+                    }
+                    current = current[key];
+                    traversed.push(key);
+                }
+                setPathResult({ status, value: current, pathTraversed: traversed });
             }, [parsedData, path]);
 
-            const handleScroll = () => { if (textareaRef.current && lineNumbersRef.current) lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop; };
-            const lineNumbers = useMemo(() => {
-                const lines = jsonStr.split('\n').length;
-                return Array.from({ length: lines }, (_, i) => i + 1).join('\n');
-            }, [jsonStr]);
+            useEffect(resolvePathLogic, [parsedData, path]);
 
-            const handleFormat = () => { if (parsedData) setJsonStr(JSON.stringify(parsedData, null, 4)); };
-            const handleCompress = () => { if (parsedData) setJsonStr(JSON.stringify(parsedData)); };
-            const handleDeepFormat = () => { if (parsedData) { const deep = deepFormatJson(parsedData); setJsonStr(JSON.stringify(deep, null, 4)); } };
-            const handleClear = () => setJsonStr("");
-            const triggerExpand = (action) => setExpandSignal({ action, id: Date.now() });
-
-            // 渲染详情面板 (对标设计图)
-            const renderDetailPanel = () => {
-                if (!pathResult || pathResult.status === 'empty') return <div className="text-slate-400 text-center mt-10">输入路径以开始检索...</div>;
-                
-                if (pathResult.status === 'error') {
-                     return (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 mt-2">
-                            <div className="text-red-500 mt-0.5"><Icon children={Icons.Alert} className="w-5 h-5"/></div>
-                            <div>
-                                <h3 className="font-semibold text-red-700">路径语法错误</h3>
-                                <p className="text-red-600 text-sm mt-1">{pathResult.message}</p>
-                            </div>
-                        </div>
-                    );
-                }
-
-                if (pathResult.status === 'missing') {
-                     return (
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-2">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-orange-500"><Icon children={Icons.Shield} className="w-5 h-5"/></span>
-                                <h3 className="font-semibold text-orange-800">Missing Node (安全返回)</h3>
-                            </div>
-                            <div className="bg-white/50 p-2 rounded text-xs font-mono text-orange-800">
-                                Path stopped at: {pathResult.pathTraversed.join('/')}
-                            </div>
-                        </div>
-                    );
-                }
-
-                // Found State - UI 对标
-                const { value } = pathResult;
-                const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
-                const asTextVal = (value === null || typeof value !== 'object') ? String(value) : "";
-                const jsonVal = JSON.stringify(value);
-
-                return (
-                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {/* 状态头 */}
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <div className="bg-green-100 text-green-600 p-1 rounded-full"><Icon children={Icons.Check} className="w-4 h-4" /></div>
-                                <span className="font-bold text-green-800 text-base">Found (节点存在)</span>
-                            </div>
-                            <span className="text-xs font-mono bg-green-100 text-green-800 px-2 py-1 rounded border border-green-200 font-semibold">
-                                Type: {type}
-                            </span>
-                        </div>
-
-                        {/* 对比卡片 */}
-                        <div className="space-y-4">
-                            {/* asText() */}
-                            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                                <div className="bg-slate-50/50 px-3 py-2 border-b border-slate-100 flex justify-between items-center">
-                                    <span className="text-xs font-bold text-slate-600">asText() 效果</span>
-                                    <span className="text-[10px] text-slate-400">提取内容 (无引号)</span>
-                                </div>
-                                <div className="p-3 font-mono text-sm text-slate-800 bg-white min-h-[3rem] break-all whitespace-pre-wrap leading-relaxed">
-                                    {asTextVal || <span className="text-slate-300 italic text-xs">(Complex Object or Null)</span>}
-                                </div>
-                            </div>
-
-                            {/* writeValueAsString() */}
-                            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                                <div className="bg-slate-50/50 px-3 py-2 border-b border-slate-100 flex justify-between items-center">
-                                    <span className="text-xs font-bold text-slate-600">writeValueAsString() 效果</span>
-                                    <span className="text-[10px] text-slate-400">标准序列化 (带引号)</span>
-                                </div>
-                                <div className="p-3 font-mono text-sm text-slate-600 bg-slate-50/30 min-h-[3rem] break-all whitespace-pre-wrap leading-relaxed">
-                                    {jsonVal}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
+            // History Logic (Simplified)
+            const saveToHistory = (content) => {
+                const saved = localStorage.getItem('json_history') || '[]';
+                const list = JSON.parse(saved);
+                if (list.length > 0 && list[0].content === content) return;
+                const newItem = { id: Date.now(), content, time: new Date().toLocaleString() };
+                localStorage.setItem('json_history', JSON.stringify([newItem, ...list].slice(0, 10)));
             };
 
-            return (
-                <div className="flex flex-col h-screen bg-slate-50 relative overflow-hidden">
-                    <HistoryDrawer isOpen={showHistory} onClose={() => setShowHistory(false)} history={history} onRestore={(content) => { setJsonStr(content); setShowHistory(false); }} />
+            // Actions
+            const handleFormat = () => { if(parsedData) { setJsonStr(JSON.stringify(parsedData, null, 4)); addToast("已格式化"); }};
+            const handleCompress = () => { if(parsedData) { setJsonStr(JSON.stringify(parsedData)); addToast("已压缩"); }};
+            const handleClear = () => setJsonStr("");
+            const handleEscape = () => { setJsonStr(JSON.stringify(jsonStr)); addToast("已转义为字符串"); };
+            const handleUnescape = () => { try { setJsonStr(JSON.parse(jsonStr)); addToast("已去转义"); } catch(e){ addToast("无法去转义", 'error'); }};
+            const handleCopy = () => { navigator.clipboard.writeText(jsonStr); addToast("源码已复制"); };
+            
+            // Drag & Drop
+            const handleDrop = (e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => setJsonStr(ev.target.result);
+                    reader.readAsText(file);
+                    addToast("文件已加载");
+                }
+            };
 
-                    {/* Toolbar */}
-                    <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm z-10 shrink-0">
-                        <div className="flex items-center gap-3 font-bold text-slate-700">
-                            <span className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-1.5 rounded-lg shadow-sm"><Icon children={Icons.Terminal} /></span>
-                            <span className="hidden md:inline">JsonTool Pro</span>
+            // Splitter Logic
+            const startResize = (e) => { isResizing.current = true; document.addEventListener('mousemove', handleResize); document.addEventListener('mouseup', stopResize); };
+            const stopResize = () => { isResizing.current = false; document.removeEventListener('mousemove', handleResize); document.removeEventListener('mouseup', stopResize); };
+            const handleResize = (e) => {
+                if (!isResizing.current || !containerRef.current) return;
+                const containerRect = containerRef.current.getBoundingClientRect();
+                const newPos = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+                if (newPos > 10 && newPos < 90) setSplitPos(newPos);
+            };
+
+            // Scroll Sync
+            const handleScroll = (e) => { if (lineRef.current) lineRef.current.scrollTop = e.target.scrollTop; };
+
+            return (
+                <div className={`flex flex-col h-screen ${darkMode ? 'dark' : ''} bg-slate-50 dark:bg-dark-bg text-slate-800 dark:text-dark-text`}>
+                    
+                    {/* --- Toolbar --- */}
+                    <div className="h-14 bg-white dark:bg-dark-surface border-b border-slate-200 dark:border-dark-border flex items-center justify-between px-4 shrink-0 z-20">
+                        <div className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-200">
+                            <span className="bg-blue-600 text-white p-1.5 rounded-lg"><Icon children={Icons.Terminal} className="w-5 h-5"/></span>
+                            <span>Jackson Ultimate</span>
                         </div>
-                        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
-                            <button onClick={() => setShowHistory(true)} className="btn-tool"><Icon children={Icons.History} className="w-4 h-4" /> <span className="hidden sm:inline">历史</span></button>
-                            <div className="w-px h-4 bg-slate-300 mx-1 self-center"></div>
-                            <button onClick={handleFormat} className="btn-tool text-blue-600" title="格式化"><Icon children={Icons.Format} className="w-4 h-4" /></button>
-                            <button onClick={handleCompress} className="btn-tool text-purple-600" title="压缩"><Icon children={Icons.Compress} className="w-4 h-4" /></button>
-                            <button onClick={handleDeepFormat} className="btn-tool text-amber-600" title="深度格式化"><Icon children={Icons.Magic} className="w-4 h-4" /></button>
-                            <button onClick={handleClear} className="btn-tool text-red-500" title="清空"><Icon children={Icons.Trash} className="w-4 h-4" /></button>
+                        <div className="flex items-center gap-2">
+                            {/* Action Group 1: Edit */}
+                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                                <button onClick={handleFormat} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-blue-600" title="格式化"><Icon children={Icons.Format}/></button>
+                                <button onClick={handleCompress} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-purple-600" title="压缩"><Icon children={Icons.Compress}/></button>
+                                <button onClick={handleClear} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-red-500" title="清空"><Icon children={Icons.Trash}/></button>
+                            </div>
+                            {/* Action Group 2: Utils */}
+                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                                <button onClick={handleEscape} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-amber-600" title="转义 (Escape)"><Icon children={Icons.Escape}/></button>
+                                <button onClick={handleUnescape} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-amber-600" title="去转义 (Unescape)"><Icon children={Icons.Code}/></button>
+                                <button onClick={() => setShowCodeGen(true)} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-green-600 font-bold text-xs px-3" title="生成 Java Code">POJO</button>
+                            </div>
+                            {/* Theme Toggle */}
+                            <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-blue-500">
+                                <Icon children={darkMode ? Icons.Sun : Icons.Moon} />
+                            </button>
                         </div>
                     </div>
 
-                    {/* Main Split View */}
-                    <div className={`flex-1 flex overflow-hidden transition-all duration-300 ${isPanelOpen ? 'pb-[400px]' : 'pb-16'}`}>
-                        <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white min-w-[300px]">
-                            <div className="h-9 bg-slate-50 border-b border-slate-100 flex items-center px-4 text-[11px] text-slate-500 font-bold tracking-wider justify-between uppercase">
-                                <span>Input Source</span>
-                                {error && <span className="text-red-500 flex items-center gap-1 normal-case"><Icon children={Icons.Alert} className="w-3 h-3" /> Syntax Error</span>}
+                    {/* --- Main Area (Split View) --- */}
+                    <div className="flex-1 flex overflow-hidden relative" ref={containerRef}>
+                        
+                        {/* LEFT: Editor */}
+                        <div style={{ width: `${splitPos}%` }} className="flex flex-col border-r border-slate-200 dark:border-dark-border bg-white dark:bg-dark-bg min-w-[200px]">
+                            <div className="h-8 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-dark-border flex items-center px-4 text-xs text-slate-500 font-bold justify-between">
+                                <span>INPUT SOURCE (Drag & Drop Supported)</span>
+                                {errorInfo && <span className="text-red-500 flex items-center gap-1"><Icon children={Icons.Alert} className="w-3 h-3"/> Syntax Error: Line {errorInfo.line}</span>}
                             </div>
-                            <div className="flex-1 relative flex overflow-hidden">
-                                <div className="w-10 bg-slate-50 border-r border-slate-100 text-right pr-2 pt-4 text-slate-400 text-xs font-code leading-6 select-none" ref={lineNumbersRef}><pre className="m-0">{lineNumbers}</pre></div>
-                                <textarea ref={textareaRef} onScroll={handleScroll} value={jsonStr} onChange={(e) => setJsonStr(e.target.value)} className="flex-1 p-4 font-code text-sm leading-6 resize-none border-none text-slate-800 custom-scroll whitespace-pre w-full" spellCheck="false" placeholder="// Paste JSON here..." />
+                            <div className="flex-1 relative flex overflow-hidden" onDragOver={e=>e.preventDefault()} onDrop={handleDrop}>
+                                {/* Line Numbers */}
+                                <div className="w-12 bg-slate-50 dark:bg-slate-900 border-r border-slate-100 dark:border-dark-border text-right pr-2 pt-4 text-slate-400 text-xs font-code leading-6 select-none" ref={lineRef}>
+                                    {jsonStr.split('\n').map((_, i) => (
+                                        <div key={i} className={`${errorInfo?.line === i + 1 ? 'bg-red-100 dark:bg-red-900/50 text-red-600' : ''}`}>{i+1}</div>
+                                    ))}
+                                </div>
+                                <textarea 
+                                    ref={editorRef} onScroll={handleScroll} 
+                                    value={jsonStr} onChange={e => setJsonStr(e.target.value)}
+                                    className="flex-1 p-4 bg-transparent font-code text-sm leading-6 resize-none border-none text-slate-800 dark:text-slate-200 custom-scroll whitespace-pre w-full"
+                                    spellCheck="false" placeholder="// 粘贴 JSON 或拖入文件..." 
+                                />
                             </div>
                         </div>
 
-                        <div className="w-1/2 flex flex-col bg-white min-w-[300px]">
-                            <div className="h-9 bg-slate-50 border-b border-slate-100 flex items-center px-2 justify-between shrink-0">
-                                <div className="flex items-center gap-1">
-                                    <button onClick={() => triggerExpand('expand')} className="p-1 hover:bg-slate-200 rounded text-slate-600" title="全部展开"><Icon children={Icons.Expand} className="w-3.5 h-3.5" /></button>
-                                    <button onClick={() => triggerExpand('collapse')} className="p-1 hover:bg-slate-200 rounded text-slate-600" title="全部折叠"><Icon children={Icons.Collapse} className="w-3.5 h-3.5" /></button>
+                        {/* RESIZER */}
+                        <div className="resizer w-1 bg-slate-200 dark:bg-dark-border hover:bg-blue-400 cursor-col-resize z-10" onMouseDown={startResize}></div>
+
+                        {/* RIGHT: Tree View */}
+                        <div style={{ width: `${100 - splitPos}%` }} className="flex flex-col bg-white dark:bg-dark-bg min-w-[200px]">
+                            <div className="h-10 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-dark-border flex items-center px-2 gap-2">
+                                <div className="relative flex-1">
+                                    <input 
+                                        type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none"
+                                        placeholder="搜索节点 Key/Value..."
+                                    />
+                                    {searchTerm && <span className="absolute right-2 top-1 text-xs text-blue-500 font-bold">Filter Active</span>}
                                 </div>
-                                <label className="flex items-center gap-2 cursor-pointer select-none group">
-                                    <input type="checkbox" checked={smartParseEnabled} onChange={e => setSmartParseEnabled(e.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                                    <span className={`text-xs font-medium transition-colors ${smartParseEnabled ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700'}`}>智能解析 JSON</span>
+                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                    <input type="checkbox" checked={smartParse} onChange={e => setSmartParse(e.target.checked)} className="rounded text-blue-600"/>
+                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">智能解析</span>
                                 </label>
                             </div>
-                            <div className="flex-1 overflow-auto p-4 custom-scroll relative bg-white">
-                                {!parsedData ? <div className="flex flex-col items-center justify-center h-full text-slate-300 animate-pulse"><Icon children={Icons.Play} className="w-12 h-12 mb-2 opacity-30" /><p className="text-sm">Ready...</p></div> : <JsonNode name={null} value={parsedData} isLast={true} highlightPath={pathResult?.status === 'found' ? pathResult.pathTraversed : []} expandSignal={expandSignal} smartParseEnabled={smartParseEnabled} />}
+                            <div className="flex-1 overflow-auto p-4 custom-scroll relative bg-white dark:bg-dark-bg">
+                                {!parsedData ? 
+                                    <div className="flex flex-col items-center justify-center h-full text-slate-300 dark:text-slate-600">
+                                        <Icon children={Icons.Terminal} className="w-16 h-16 opacity-20"/>
+                                        <p className="mt-2 text-sm">Waiting for valid JSON...</p>
+                                    </div> : 
+                                    <JsonNode name={null} value={parsedData} isLast={true} highlightPath={pathResult?.status==='found'?pathResult.pathTraversed:[]} searchTerm={searchTerm.toLowerCase()} smartParse={smartParse} />
+                                }
                             </div>
                         </div>
                     </div>
 
-                    {/* Bottom Floating Panel (Active Float Up) */}
-                    <div 
-                        className={`fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-8px_30px_rgba(0,0,0,0.1)] z-40 panel-transition flex flex-col`}
-                        style={{ height: isPanelOpen ? '450px' : '64px' }}
-                    >
-                        {/* 拖拽/收起把手 */}
-                        <div 
-                            className="h-4 flex justify-center items-center cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-100 absolute top-0 w-full z-10"
-                            onClick={() => setIsPanelOpen(!isPanelOpen)}
-                            title={isPanelOpen ? "点击收起" : "点击展开"}
-                        >
-                            <div className="w-10 h-1 rounded-full bg-slate-300"></div>
-                        </div>
-
-                        {/* 输入栏 (始终可见) */}
-                        <div className="h-16 flex items-center px-6 gap-4 shrink-0 mt-2 bg-white z-20">
-                            <div className="flex-1 relative group max-w-2xl">
-                                <div className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${isPanelOpen ? 'text-blue-500' : 'text-slate-400'}`}>
-                                    <Icon children={Icons.Search} className="w-4 h-4" />
-                                </div>
-                                <input 
-                                    type="text" 
-                                    value={path}
-                                    onChange={(e) => setPath(e.target.value)}
-                                    onFocus={() => setIsPanelOpen(true)}
-                                    className={`w-full bg-slate-50 border text-slate-700 text-sm rounded-lg pl-9 pr-10 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono transition-all placeholder-slate-400 shadow-sm ${isPanelOpen ? 'border-blue-300' : 'border-slate-200'}`}
-                                    placeholder="输入 Jackson Path (例如 /data/0/val)..."
-                                />
-                                {isPanelOpen && (
-                                    <button 
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1" 
-                                        onClick={() => setIsPanelOpen(false)}
-                                        title="收起面板"
-                                    >
-                                        <Icon children={Icons.ChevronDown} className="w-4 h-4" />
-                                    </button>
-                                )}
-                            </div>
+                    {/* --- Bottom Debug Panel --- */}
+                    <div className={`fixed bottom-0 left-0 right-0 bg-white dark:bg-dark-surface border-t border-slate-200 dark:border-dark-border shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-40 transition-all duration-300 flex flex-col`}
+                        style={{ height: panelState === 'collapsed' ? '60px' : panelState === 'maximized' ? '100vh' : '400px' }}>
+                        
+                        {/* Header / Input Row */}
+                        <div className="h-14 flex items-center px-4 gap-4 bg-slate-50 dark:bg-slate-900 shrink-0">
+                            {/* Toggle Button */}
+                            <button onClick={() => setPanelState(s => s === 'collapsed' ? 'expanded' : 'collapsed')} className="text-slate-400 hover:text-blue-500">
+                                <Icon children={panelState === 'collapsed' ? Icons.ChevronDown : Icons.X} className={`w-5 h-5 transition-transform ${panelState==='collapsed'?'rotate-180':''}`}/>
+                            </button>
                             
-                            {/* 简略状态 (仅在收起时显示) */}
-                            {!isPanelOpen && pathResult && (
-                                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4">
-                                    <div className="h-6 w-px bg-slate-200"></div>
-                                    {pathResult.status === 'found' ? (
-                                        <span className="text-green-600 flex items-center gap-1.5 text-sm font-medium"><Icon children={Icons.Check} className="w-4 h-4"/> Found</span>
-                                    ) : (
-                                        <span className="text-slate-400 text-sm">No Result</span>
-                                    )}
+                            {/* Search Input */}
+                            <div className="flex-1 relative group">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Icon children={Icons.Search} className="w-4 h-4"/></div>
+                                <input type="text" value={path} onChange={e => setPath(e.target.value)} onFocus={() => panelState==='collapsed' && setPanelState('expanded')}
+                                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="输入 Path 调试 (如 /data/users/0/name)..." />
+                            </div>
+
+                            {/* Panel Controls */}
+                            {panelState !== 'collapsed' && (
+                                <div className="flex gap-2 text-slate-400">
+                                    <button onClick={() => setPanelState(s => s === 'pinned' ? 'expanded' : 'pinned')} className={`p-1 hover:text-blue-500 ${panelState==='pinned'?'text-blue-500':''}`} title="钉住面板"><Icon children={Icons.Pin}/></button>
+                                    <button onClick={() => setPanelState(s => s === 'maximized' ? 'expanded' : 'maximized')} className={`p-1 hover:text-blue-500 ${panelState==='maximized'?'text-blue-500':''}`} title="最大化"><Icon children={Icons.Maximize}/></button>
                                 </div>
                             )}
                         </div>
 
-                        {/* 详细结果区 (展开时显示) */}
-                        <div className={`flex-1 overflow-auto custom-scroll px-6 pb-6 bg-white transition-opacity duration-300 ${isPanelOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                            {renderDetailPanel()}
+                        {/* Result Content */}
+                        <div className="flex-1 overflow-auto custom-scroll p-6 bg-white dark:bg-dark-bg">
+                            {pathResult?.status === 'found' ? (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded border border-green-100 dark:border-green-900">
+                                        <Icon children={Icons.Check}/> <span className="font-bold">Found</span>
+                                        <span className="text-xs ml-auto bg-white dark:bg-black/20 px-2 py-0.5 rounded font-mono text-slate-600 dark:text-slate-300">{typeof pathResult.value === 'object' ? (Array.isArray(pathResult.value)?'Array':'Object') : typeof pathResult.value}</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="border border-slate-200 dark:border-slate-700 rounded bg-slate-50 dark:bg-slate-900">
+                                            <div className="px-3 py-1 border-b border-slate-200 dark:border-slate-700 text-xs text-slate-500 font-bold">asText()</div>
+                                            <div className="p-3 font-mono text-sm whitespace-pre-wrap break-all">{typeof pathResult.value==='object'&&pathResult.value!==null ? <span className="text-slate-400 italic">(Object)</span> : String(pathResult.value)}</div>
+                                        </div>
+                                        <div className="border border-slate-200 dark:border-slate-700 rounded bg-slate-50 dark:bg-slate-900">
+                                            <div className="px-3 py-1 border-b border-slate-200 dark:border-slate-700 text-xs text-slate-500 font-bold">toString()</div>
+                                            <div className="p-3 font-mono text-sm whitespace-pre-wrap break-all text-slate-600 dark:text-slate-400">{JSON.stringify(pathResult.value)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center text-slate-400 mt-10">
+                                    {pathResult?.status === 'missing' ? `Path missing at: ${pathResult.pathTraversed.join('/')}` : '输入路径以查看结果...'}
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    {/* Mask (Overlay when panel is open) */}
-                    {isPanelOpen && (
-                        <div 
-                            className="absolute inset-0 bg-black/5 z-30 animate-in fade-in duration-300" 
-                            style={{ bottom: '450px' }}
-                            onClick={() => setIsPanelOpen(false)}
-                        ></div>
+                    {/* --- Java Code Gen Modal --- */}
+                    {showCodeGen && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowCodeGen(false)}>
+                            <div className="bg-white dark:bg-dark-surface w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 border-b border-slate-200 dark:border-dark-border flex justify-between">
+                                    <h3 className="font-bold text-lg dark:text-slate-200">Java POJO Generator</h3>
+                                    <button onClick={() => setShowCodeGen(false)}><Icon children={Icons.X}/></button>
+                                </div>
+                                <div className="flex-1 overflow-auto p-4 bg-slate-50 dark:bg-dark-bg">
+                                    <pre className="font-code text-sm text-slate-800 dark:text-slate-300">{generateJavaCode(jsonStr)}</pre>
+                                </div>
+                                <div className="p-4 border-t border-slate-200 dark:border-dark-border flex justify-end">
+                                    <button onClick={() => { navigator.clipboard.writeText(generateJavaCode(jsonStr)); addToast("Java 代码已复制"); setShowCodeGen(false); }} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">复制并关闭</button>
+                                </div>
+                            </div>
+                        </div>
                     )}
-
-                    <style jsx>{`
-                        .btn-tool { @apply px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-800 hover:bg-white hover:shadow-sm; }
-                    `}</style>
                 </div>
             );
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<ToastProvider><App /></ToastProvider>);
     </script>
 </body>
 </html>
