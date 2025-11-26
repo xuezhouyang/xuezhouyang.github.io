@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jackson Path & JSON Editor Pro</title>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            background-color: #f8fafc; 
+            overflow: hidden; 
+        }
+        .font-code { font-family: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        textarea:focus { outline: none; }
+        
+        /* 动画 */
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .drawer-enter { animation: slideIn 0.3s ease-out forwards; }
+
+        /* 面板过渡动画 */
+        .panel-transition { transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-in-out; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        // --- Icons ---
+        const Icon = ({ children, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+
+        const Icons = {
+            Terminal: <><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></>,
+            Play: <polygon points="5 3 19 12 5 21 5 3" />,
+            Check: <polyline points="20 6 9 17 4 12" />,
+            Alert: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>,
+            Copy: <><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>,
+            Trash: <><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>,
+            Format: <><polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" /><line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" /></>,
+            Compress: <><polyline points="4 7 10 7 10 1" /><polyline points="20 17 14 17 14 23" /><line x1="14" y1="17" x2="21" y2="24" /><line x1="3" y1="0" x2="10" y2="7" /></>,
+            ChevronRight: <polyline points="9 18 15 12 9 6" />,
+            ChevronDown: <polyline points="6 9 12 15 18 9" />,
+            ChevronUp: <polyline points="18 15 12 9 6 15" />,
+            Search: <><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></>,
+            Shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+            History: <><path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /><path d="M12 7v5l4 2" /></>,
+            Expand: <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>,
+            Collapse: <><polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" /><line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" /></>,
+            Magic: <><path d="m2 9 3-3 3 3" /><path d="M13 2 9 6 13 10" /><path d="m16 17 3 3 3-3" /><line x1="5" x2="5" y1="6" y2="13" /><line x1="11" x2="11" y1="6" y2="23" /><line x1="19" x2="19" y1="13" y2="20" /></>,
+            // 修复: 使用 fragment <>...</> 包裹多个元素
+            X: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>
+        };
+
+        // --- Core Functions ---
+        const deepFormatJson = (obj) => {
+            if (typeof obj === 'string') {
+                try {
+                    const parsed = JSON.parse(obj);
+                    if (typeof parsed === 'object' && parsed !== null) return deepFormatJson(parsed);
+                } catch (e) {}
+                return obj;
+            }
+            if (Array.isArray(obj)) return obj.map(deepFormatJson);
+            if (obj !== null && typeof obj === 'object') {
+                const newObj = {};
+                for (const key in obj) newObj[key] = deepFormatJson(obj[key]);
+                return newObj;
+            }
+            return obj;
+        };
+
+        const smartParseValue = (val) => {
+            if (typeof val === 'string') {
+                try {
+                    const parsed = JSON.parse(val);
+                    if (typeof parsed === 'object' && parsed !== null) return { value: parsed, isJsonString: true };
+                } catch (e) {}
+            }
+            return { value: val, isJsonString: false };
+        };
+
+        const resolvePath = (data, pathStr) => {
+            if (!pathStr || pathStr.trim() === "") return { status: 'empty', value: null };
+            let parts = [];
+            let isPointer = pathStr.startsWith('/');
+            try {
+                if (isPointer) {
+                    parts = pathStr.split('/').slice(1).map(p => p.replace(/~1/g, '/').replace(/~0/g, '~'));
+                } else {
+                    parts = pathStr.replace(/\[(\d+)\]/g, '.$1').split('.');
+                }
+            } catch (e) {
+                return { status: 'error', message: '语法错误' };
+            }
+            let current = data;
+            let traversed = [];
+            for (let i = 0; i < parts.length; i++) {
+                const key = parts[i];
+                if (current === null || typeof current !== 'object' || !(key in current)) {
+                    return { status: 'missing', pathTraversed: traversed };
+                }
+                current = current[key];
+                traversed.push(key);
+            }
+            return { status: 'found', value: current, pathTraversed: traversed };
+        };
+
+        // --- JsonNode Component ---
+        const JsonNode = ({ name, value, isLast, depth = 0, path = [], highlightPath, expandSignal, smartParseEnabled }) => {
+            const [expanded, setExpanded] = useState(true);
+            const { value: actualValue, isJsonString } = useMemo(() => {
+                if (smartParseEnabled) return smartParseValue(value);
+                return { value, isJsonString: false };
+            }, [value, smartParseEnabled]);
+
+            const isObject = actualValue !== null && typeof actualValue === 'object';
+            const isArray = Array.isArray(actualValue);
+            const isEmpty = isObject && Object.keys(actualValue).length === 0;
+
+            useEffect(() => {
+                if (expandSignal) setExpanded(expandSignal.action === 'expand');
+            }, [expandSignal]);
+
+            const isParentOfHighlight = useMemo(() => {
+                if (!highlightPath) return false;
+                if (path.length >= highlightPath.length) return false;
+                return path.every((p, i) => p == highlightPath[i]);
+            }, [path, highlightPath]);
+
+            const isHighlighted = useMemo(() => {
+                if (!highlightPath || highlightPath.length === 0) return false;
+                if (path.length === highlightPath.length && path.every((p, i) => p == highlightPath[i])) return true;
+                return false;
+            }, [path, highlightPath]);
+
+            useEffect(() => {
+                if (isParentOfHighlight) setExpanded(true);
+            }, [isParentOfHighlight]);
+
+            const renderValue = (val) => {
+                if (val === null) return <span className="text-red-500 font-bold">null</span>;
+                if (typeof val === 'string') return <span className="text-green-600 break-all">"{val}"</span>;
+                if (typeof val === 'number') return <span className="text-blue-600">{val}</span>;
+                if (typeof val === 'boolean') return <span className="text-purple-600 font-bold">{val.toString()}</span>;
+                return <span>{String(val)}</span>;
+            };
+
+            const toggle = (e) => { e.stopPropagation(); setExpanded(!expanded); };
+            const indent = depth * 20;
+
+            if (isObject) {
+                const keys = Object.keys(actualValue);
+                const Opening = isArray ? '[' : '{';
+                const Closing = isArray ? ']' : '}';
+                const label = name !== null ? <span className="text-purple-700 font-semibold">"{name}": </span> : null;
+                const count = isArray ? keys.length : Object.keys(actualValue).length;
+                
+                return (
+                    <div className="font-code text-sm leading-6">
+                        <div className={`flex items-start hover:bg-slate-100/80 rounded px-1 cursor-pointer transition-colors ${isHighlighted ? 'bg-yellow-100 ring-2 ring-yellow-300' : ''}`} onClick={toggle}>
+                            <span style={{ width: indent }} className="flex-shrink-0 inline-block"></span>
+                            {!isEmpty && (
+                                <span className="mr-1 mt-1 text-slate-400 hover:text-slate-600 transition-transform">
+                                    <Icon children={expanded ? Icons.ChevronDown : Icons.ChevronRight} className="w-3 h-3" />
+                                </span>
+                            )}
+                            {isEmpty && <span className="w-4 inline-block"></span>}
+                            {label}
+                            {isJsonString && <span className="mr-2 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded border border-amber-200 font-sans font-medium tracking-wide">JSON</span>}
+                            <span className="text-slate-500 font-medium">{Opening}</span>
+                            {!expanded && !isEmpty && <span className="text-slate-400 mx-2 bg-slate-100 px-1.5 rounded text-xs select-none">... {count} ...</span>}
+                            {!expanded && <span className="text-slate-500 font-medium">{Closing}{!isLast && ','}</span>}
+                        </div>
+                        {expanded && !isEmpty && (
+                            <div>
+                                {keys.map((key, idx) => (
+                                    <JsonNode key={key} name={isArray ? null : key} value={actualValue[key]} isLast={idx === keys.length - 1} depth={depth + 1} path={[...path, key]} highlightPath={highlightPath} expandSignal={expandSignal} smartParseEnabled={smartParseEnabled} />
+                                ))}
+                            </div>
+                        )}
+                        {expanded && (
+                            <div className="hover:bg-slate-100/50">
+                                <span style={{ width: indent + (name !== null ? 0 : 0) }} className="inline-block"></span>
+                                <span className="text-slate-500 ml-5 font-medium">{Closing}{!isLast && ','}</span>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+            return (
+                <div className={`font-code text-sm leading-6 hover:bg-slate-100/80 px-1 rounded flex ${isHighlighted ? 'bg-yellow-200 ring-2 ring-yellow-400 animate-pulse' : ''}`}>
+                    <span style={{ width: indent }} className="flex-shrink-0 inline-block"></span>
+                    <span className="w-4 inline-block"></span> 
+                    {name !== null && <span className="text-purple-700 mr-1">"{name}":</span>}
+                    {renderValue(actualValue)}
+                    {!isLast && <span className="text-slate-500">,</span>}
+                </div>
+            );
+        };
+
+        // --- History Component ---
+        const HistoryDrawer = ({ isOpen, onClose, history, onRestore }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="absolute inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-sm" onClick={onClose}>
+                    <div className="w-80 bg-white h-full shadow-2xl drawer-enter flex flex-col border-l border-slate-200" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-semibold text-slate-700 flex items-center gap-2"><Icon children={Icons.History} className="w-4 h-4" /> 历史记录</h3>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+                        </div>
+                        <div className="flex-1 overflow-auto custom-scroll p-2 space-y-2 bg-slate-50">
+                            {history.length === 0 && <div className="text-center text-slate-400 mt-10 text-sm">暂无历史记录</div>}
+                            {history.map((item) => (
+                                <div key={item.id} onClick={() => onRestore(item.content)} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-xs font-bold text-slate-500">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                                        <span className="text-[10px] text-slate-300 group-hover:text-blue-400 font-mono">{(item.size / 1024).toFixed(1)} KB</span>
+                                    </div>
+                                    <div className="text-xs text-slate-600 font-mono line-clamp-2 break-all opacity-80">{item.preview}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- App Component ---
+        const App = () => {
+            const [jsonStr, setJsonStr] = useState("");
+            const [parsedData, setParsedData] = useState(null);
+            const [error, setError] = useState(null);
+            const [path, setPath] = useState("/data/0/val");
+            const [pathResult, setPathResult] = useState(null);
+            
+            const [history, setHistory] = useState([]);
+            const [showHistory, setShowHistory] = useState(false);
+            const [expandSignal, setExpandSignal] = useState(null);
+            const [smartParseEnabled, setSmartParseEnabled] = useState(false);
+            const [isPanelOpen, setIsPanelOpen] = useState(false); // 控制底部面板上浮状态
+
+            const textareaRef = useRef(null);
+            const lineNumbersRef = useRef(null);
+            const saveTimeoutRef = useRef(null);
+
+            useEffect(() => {
+                const saved = localStorage.getItem('json_tool_history');
+                if (saved) {
+                    try {
+                        const list = JSON.parse(saved);
+                        setHistory(list);
+                        if (list.length > 0) setJsonStr(list[0].content);
+                    } catch (e) {}
+                } else {
+                    const demo = JSON.stringify({
+                        "app": "JsonToolPro",
+                        "features": ["History", "RecursiveParse", "Path"],
+                        "data": [{"id": 1, "val": "家有老人+清淡饮食要求"}, {"id": 2, "val": "This is a string"}]
+                    }, null, 4);
+                    setJsonStr(demo);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (!jsonStr.trim()) { setParsedData(null); setError(null); return; }
+                try {
+                    const data = JSON.parse(jsonStr);
+                    setParsedData(data);
+                    setError(null);
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                    saveTimeoutRef.current = setTimeout(() => saveToHistory(jsonStr), 2000);
+                } catch (e) {
+                    setParsedData(null);
+                    setError(e.message);
+                }
+            }, [jsonStr]);
+
+            const saveToHistory = (content) => {
+                setHistory(prev => {
+                    if (prev.length > 0 && prev[0].content === content) return prev;
+                    const newItem = { id: Date.now(), timestamp: Date.now(), content: content, preview: content.replace(/\s+/g, ' ').substring(0, 80), size: new Blob([content]).size };
+                    const newList = [newItem, ...prev].slice(0, 20);
+                    localStorage.setItem('json_tool_history', JSON.stringify(newList));
+                    return newList;
+                });
+            };
+
+            useEffect(() => {
+                if (parsedData) setPathResult(resolvePath(parsedData, path));
+                else setPathResult(null);
+            }, [parsedData, path]);
+
+            const handleScroll = () => { if (textareaRef.current && lineNumbersRef.current) lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop; };
+            const lineNumbers = useMemo(() => {
+                const lines = jsonStr.split('\n').length;
+                return Array.from({ length: lines }, (_, i) => i + 1).join('\n');
+            }, [jsonStr]);
+
+            const handleFormat = () => { if (parsedData) setJsonStr(JSON.stringify(parsedData, null, 4)); };
+            const handleCompress = () => { if (parsedData) setJsonStr(JSON.stringify(parsedData)); };
+            const handleDeepFormat = () => { if (parsedData) { const deep = deepFormatJson(parsedData); setJsonStr(JSON.stringify(deep, null, 4)); } };
+            const handleClear = () => setJsonStr("");
+            const triggerExpand = (action) => setExpandSignal({ action, id: Date.now() });
+
+            // 渲染详情面板 (对标设计图)
+            const renderDetailPanel = () => {
+                if (!pathResult || pathResult.status === 'empty') return <div className="text-slate-400 text-center mt-10">输入路径以开始检索...</div>;
+                
+                if (pathResult.status === 'error') {
+                     return (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 mt-2">
+                            <div className="text-red-500 mt-0.5"><Icon children={Icons.Alert} className="w-5 h-5"/></div>
+                            <div>
+                                <h3 className="font-semibold text-red-700">路径语法错误</h3>
+                                <p className="text-red-600 text-sm mt-1">{pathResult.message}</p>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (pathResult.status === 'missing') {
+                     return (
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-2">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-orange-500"><Icon children={Icons.Shield} className="w-5 h-5"/></span>
+                                <h3 className="font-semibold text-orange-800">Missing Node (安全返回)</h3>
+                            </div>
+                            <div className="bg-white/50 p-2 rounded text-xs font-mono text-orange-800">
+                                Path stopped at: {pathResult.pathTraversed.join('/')}
+                            </div>
+                        </div>
+                    );
+                }
+
+                // Found State - UI 对标
+                const { value } = pathResult;
+                const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+                const asTextVal = (value === null || typeof value !== 'object') ? String(value) : "";
+                const jsonVal = JSON.stringify(value);
+
+                return (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* 状态头 */}
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="bg-green-100 text-green-600 p-1 rounded-full"><Icon children={Icons.Check} className="w-4 h-4" /></div>
+                                <span className="font-bold text-green-800 text-base">Found (节点存在)</span>
+                            </div>
+                            <span className="text-xs font-mono bg-green-100 text-green-800 px-2 py-1 rounded border border-green-200 font-semibold">
+                                Type: {type}
+                            </span>
+                        </div>
+
+                        {/* 对比卡片 */}
+                        <div className="space-y-4">
+                            {/* asText() */}
+                            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                <div className="bg-slate-50/50 px-3 py-2 border-b border-slate-100 flex justify-between items-center">
+                                    <span className="text-xs font-bold text-slate-600">asText() 效果</span>
+                                    <span className="text-[10px] text-slate-400">提取内容 (无引号)</span>
+                                </div>
+                                <div className="p-3 font-mono text-sm text-slate-800 bg-white min-h-[3rem] break-all whitespace-pre-wrap leading-relaxed">
+                                    {asTextVal || <span className="text-slate-300 italic text-xs">(Complex Object or Null)</span>}
+                                </div>
+                            </div>
+
+                            {/* writeValueAsString() */}
+                            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                <div className="bg-slate-50/50 px-3 py-2 border-b border-slate-100 flex justify-between items-center">
+                                    <span className="text-xs font-bold text-slate-600">writeValueAsString() 效果</span>
+                                    <span className="text-[10px] text-slate-400">标准序列化 (带引号)</span>
+                                </div>
+                                <div className="p-3 font-mono text-sm text-slate-600 bg-slate-50/30 min-h-[3rem] break-all whitespace-pre-wrap leading-relaxed">
+                                    {jsonVal}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="flex flex-col h-screen bg-slate-50 relative overflow-hidden">
+                    <HistoryDrawer isOpen={showHistory} onClose={() => setShowHistory(false)} history={history} onRestore={(content) => { setJsonStr(content); setShowHistory(false); }} />
+
+                    {/* Toolbar */}
+                    <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm z-10 shrink-0">
+                        <div className="flex items-center gap-3 font-bold text-slate-700">
+                            <span className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-1.5 rounded-lg shadow-sm"><Icon children={Icons.Terminal} /></span>
+                            <span className="hidden md:inline">JsonTool Pro</span>
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
+                            <button onClick={() => setShowHistory(true)} className="btn-tool"><Icon children={Icons.History} className="w-4 h-4" /> <span className="hidden sm:inline">历史</span></button>
+                            <div className="w-px h-4 bg-slate-300 mx-1 self-center"></div>
+                            <button onClick={handleFormat} className="btn-tool text-blue-600" title="格式化"><Icon children={Icons.Format} className="w-4 h-4" /></button>
+                            <button onClick={handleCompress} className="btn-tool text-purple-600" title="压缩"><Icon children={Icons.Compress} className="w-4 h-4" /></button>
+                            <button onClick={handleDeepFormat} className="btn-tool text-amber-600" title="深度格式化"><Icon children={Icons.Magic} className="w-4 h-4" /></button>
+                            <button onClick={handleClear} className="btn-tool text-red-500" title="清空"><Icon children={Icons.Trash} className="w-4 h-4" /></button>
+                        </div>
+                    </div>
+
+                    {/* Main Split View */}
+                    <div className={`flex-1 flex overflow-hidden transition-all duration-300 ${isPanelOpen ? 'pb-[400px]' : 'pb-16'}`}>
+                        <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white min-w-[300px]">
+                            <div className="h-9 bg-slate-50 border-b border-slate-100 flex items-center px-4 text-[11px] text-slate-500 font-bold tracking-wider justify-between uppercase">
+                                <span>Input Source</span>
+                                {error && <span className="text-red-500 flex items-center gap-1 normal-case"><Icon children={Icons.Alert} className="w-3 h-3" /> Syntax Error</span>}
+                            </div>
+                            <div className="flex-1 relative flex overflow-hidden">
+                                <div className="w-10 bg-slate-50 border-r border-slate-100 text-right pr-2 pt-4 text-slate-400 text-xs font-code leading-6 select-none" ref={lineNumbersRef}><pre className="m-0">{lineNumbers}</pre></div>
+                                <textarea ref={textareaRef} onScroll={handleScroll} value={jsonStr} onChange={(e) => setJsonStr(e.target.value)} className="flex-1 p-4 font-code text-sm leading-6 resize-none border-none text-slate-800 custom-scroll whitespace-pre w-full" spellCheck="false" placeholder="// Paste JSON here..." />
+                            </div>
+                        </div>
+
+                        <div className="w-1/2 flex flex-col bg-white min-w-[300px]">
+                            <div className="h-9 bg-slate-50 border-b border-slate-100 flex items-center px-2 justify-between shrink-0">
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => triggerExpand('expand')} className="p-1 hover:bg-slate-200 rounded text-slate-600" title="全部展开"><Icon children={Icons.Expand} className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => triggerExpand('collapse')} className="p-1 hover:bg-slate-200 rounded text-slate-600" title="全部折叠"><Icon children={Icons.Collapse} className="w-3.5 h-3.5" /></button>
+                                </div>
+                                <label className="flex items-center gap-2 cursor-pointer select-none group">
+                                    <input type="checkbox" checked={smartParseEnabled} onChange={e => setSmartParseEnabled(e.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className={`text-xs font-medium transition-colors ${smartParseEnabled ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700'}`}>智能解析 JSON</span>
+                                </label>
+                            </div>
+                            <div className="flex-1 overflow-auto p-4 custom-scroll relative bg-white">
+                                {!parsedData ? <div className="flex flex-col items-center justify-center h-full text-slate-300 animate-pulse"><Icon children={Icons.Play} className="w-12 h-12 mb-2 opacity-30" /><p className="text-sm">Ready...</p></div> : <JsonNode name={null} value={parsedData} isLast={true} highlightPath={pathResult?.status === 'found' ? pathResult.pathTraversed : []} expandSignal={expandSignal} smartParseEnabled={smartParseEnabled} />}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bottom Floating Panel (Active Float Up) */}
+                    <div 
+                        className={`fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-8px_30px_rgba(0,0,0,0.1)] z-40 panel-transition flex flex-col`}
+                        style={{ height: isPanelOpen ? '450px' : '64px' }}
+                    >
+                        {/* 拖拽/收起把手 */}
+                        <div 
+                            className="h-4 flex justify-center items-center cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-100 absolute top-0 w-full z-10"
+                            onClick={() => setIsPanelOpen(!isPanelOpen)}
+                            title={isPanelOpen ? "点击收起" : "点击展开"}
+                        >
+                            <div className="w-10 h-1 rounded-full bg-slate-300"></div>
+                        </div>
+
+                        {/* 输入栏 (始终可见) */}
+                        <div className="h-16 flex items-center px-6 gap-4 shrink-0 mt-2 bg-white z-20">
+                            <div className="flex-1 relative group max-w-2xl">
+                                <div className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${isPanelOpen ? 'text-blue-500' : 'text-slate-400'}`}>
+                                    <Icon children={Icons.Search} className="w-4 h-4" />
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={path}
+                                    onChange={(e) => setPath(e.target.value)}
+                                    onFocus={() => setIsPanelOpen(true)}
+                                    className={`w-full bg-slate-50 border text-slate-700 text-sm rounded-lg pl-9 pr-10 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono transition-all placeholder-slate-400 shadow-sm ${isPanelOpen ? 'border-blue-300' : 'border-slate-200'}`}
+                                    placeholder="输入 Jackson Path (例如 /data/0/val)..."
+                                />
+                                {isPanelOpen && (
+                                    <button 
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1" 
+                                        onClick={() => setIsPanelOpen(false)}
+                                        title="收起面板"
+                                    >
+                                        <Icon children={Icons.ChevronDown} className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+                            
+                            {/* 简略状态 (仅在收起时显示) */}
+                            {!isPanelOpen && pathResult && (
+                                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4">
+                                    <div className="h-6 w-px bg-slate-200"></div>
+                                    {pathResult.status === 'found' ? (
+                                        <span className="text-green-600 flex items-center gap-1.5 text-sm font-medium"><Icon children={Icons.Check} className="w-4 h-4"/> Found</span>
+                                    ) : (
+                                        <span className="text-slate-400 text-sm">No Result</span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 详细结果区 (展开时显示) */}
+                        <div className={`flex-1 overflow-auto custom-scroll px-6 pb-6 bg-white transition-opacity duration-300 ${isPanelOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                            {renderDetailPanel()}
+                        </div>
+                    </div>
+
+                    {/* Mask (Overlay when panel is open) */}
+                    {isPanelOpen && (
+                        <div 
+                            className="absolute inset-0 bg-black/5 z-30 animate-in fade-in duration-300" 
+                            style={{ bottom: '450px' }}
+                            onClick={() => setIsPanelOpen(false)}
+                        ></div>
+                    )}
+
+                    <style jsx>{`
+                        .btn-tool { @apply px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-800 hover:bg-white hover:shadow-sm; }
+                    `}</style>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
