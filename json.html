@@ -41,6 +41,8 @@
         /* Animations */
         @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .toast-enter { animation: slideUp 0.3s ease-out forwards; }
+        .fade-in { animation: fadeIn 0.2s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
         /* Splitter Resizer */
         .resizer { width: 5px; cursor: col-resize; transition: background 0.2s; z-index: 10; }
@@ -77,7 +79,8 @@
             Escape: <><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>,
             Pin: <><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></>,
             Maximize: <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>,
-            X: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>
+            X: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
+            ArrowUpRight: <><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></>
         };
 
         // --- Java Code Generator ---
@@ -92,7 +95,7 @@
                 if (typeof val === 'boolean') return "boolean";
                 if (Array.isArray(val)) {
                     if (val.length === 0) return "List<Object>";
-                    return `List<${getType(val[0])}>`; // Simplified assumption
+                    return `List<${getType(val[0])}>`; 
                 }
                 if (typeof val === 'object') return capitalize("NestedObject"); 
                 return "Object";
@@ -102,16 +105,11 @@
                 let sb = `@Data\npublic class ${className} {\n`;
                 for (const key in obj) {
                     const type = getType(obj[key]);
-                    const fieldName = key.includes('_') ? key.replace(/_([a-z])/g, (g) => g[1].toUpperCase()) : key; // camelCase
-                    
-                    if (fieldName !== key) {
-                        sb += `    @JsonProperty("${key}")\n`;
-                    }
-                    
+                    const fieldName = key.includes('_') ? key.replace(/_([a-z])/g, (g) => g[1].toUpperCase()) : key;
+                    if (fieldName !== key) sb += `    @JsonProperty("${key}")\n`;
                     if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
                         const nestedClassName = capitalize(fieldName);
                         sb += `    private ${nestedClassName} ${fieldName};\n`;
-                         // Note: In a full implementation, we'd recursively generate inner classes or separate files
                     } else if (Array.isArray(obj[key]) && obj[key].length > 0 && typeof obj[key][0] === 'object') {
                          sb += `    private List<${capitalize(fieldName)}Item> ${fieldName};\n`;
                     } else {
@@ -121,7 +119,6 @@
                 sb += "}\n";
                 return sb;
             };
-
             try {
                 const obj = JSON.parse(json);
                 if (Array.isArray(obj) && obj.length > 0) return generateClass(obj[0], rootName);
@@ -130,9 +127,7 @@
             } catch (e) { return "// Invalid JSON"; }
         };
 
-        // --- 2. Main Logic Components ---
-        
-        // Toast Notification System
+        // --- Toast ---
         const ToastContext = React.createContext();
         const ToastProvider = ({ children }) => {
             const [toasts, setToasts] = useState([]);
@@ -156,8 +151,8 @@
         };
         const useToast = () => React.useContext(ToastContext);
 
-        // Recursive Json Node with Search Highlighting
-        const JsonNode = React.memo(({ name, value, isLast, depth = 0, path = [], highlightPath, searchTerm, smartParse }) => {
+        // --- NEW Block-Style Json Node ---
+        const JsonNode = React.memo(({ name, value, isLast, depth = 0, path = [], highlightPath, searchTerm, smartParse, onKeyClick }) => {
             const [expanded, setExpanded] = useState(true);
             const { value: actualValue, isJsonString } = useMemo(() => {
                 if (smartParse && typeof value === 'string') {
@@ -170,7 +165,6 @@
             const isArray = Array.isArray(actualValue);
             const isEmpty = isObject && Object.keys(actualValue).length === 0;
 
-            // Search Logic
             const matchesSearch = useMemo(() => {
                 if (!searchTerm) return true;
                 const lowerKey = name ? String(name).toLowerCase() : "";
@@ -178,10 +172,6 @@
                 return lowerKey.includes(searchTerm) || lowerVal.includes(searchTerm);
             }, [name, actualValue, searchTerm]);
 
-            // If children match, parent must show
-            // Note: True recursive filtering is complex in React without building a shadow tree. 
-            // Here we use a CSS-based approach or simplified expansion. 
-            // For this demo, we auto-expand if search term exists.
             useEffect(() => { if (searchTerm) setExpanded(true); }, [searchTerm]);
 
             const isHighlighted = useMemo(() => {
@@ -189,13 +179,11 @@
                 return path.length === highlightPath.length && path.every((p, i) => p == highlightPath[i]);
             }, [path, highlightPath]);
 
-            // Skip rendering if filtered out (simplified)
-            // In a real generic filter, we need to know if *any* child matches.
-            // For now, we render all but highlight matches.
-            
-            const indent = depth * 20;
-
             const toggle = (e) => { e.stopPropagation(); setExpanded(!expanded); };
+            const handleKeyClick = (e) => {
+                e.stopPropagation();
+                if (name !== null) onKeyClick(path);
+            };
 
             const renderPrimitive = (val) => {
                 if (val === null) return <span className="text-red-500 dark:text-red-400 font-bold">null</span>;
@@ -205,51 +193,105 @@
                 return <span>{String(val)}</span>;
             };
 
-            const rowClass = `flex font-code text-sm leading-6 px-1 rounded cursor-pointer transition-colors 
-                ${isHighlighted ? 'bg-yellow-200 dark:bg-yellow-900 ring-2 ring-yellow-400 animate-pulse' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}
-                ${searchTerm && matchesSearch ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
-            `;
+            // UPDATE 1: Background and Border only on Hover
+            const blockBg = depth > 0 ? 'hover:bg-slate-500/5 dark:hover:bg-white/5' : '';
+            // UPDATE 2: Border transparent by default, visible on hover
+            const blockBorder = depth > 0 ? 'border-l border-transparent hover:border-slate-300 dark:hover:border-slate-700' : '';
+            const highlightClass = isHighlighted ? 'bg-yellow-200/50 dark:bg-yellow-900/30 ring-1 ring-yellow-400' : '';
 
+            // --- Object/Array Rendering ---
             if (isObject) {
                 const keys = Object.keys(actualValue);
                 const Opening = isArray ? '[' : '{';
                 const Closing = isArray ? ']' : '}';
-                const label = name !== null ? <span className="text-purple-700 dark:text-purple-400 font-semibold">"{name}": </span> : null;
+                const label = name !== null ? (
+                    <span 
+                        className="text-purple-700 dark:text-purple-400 font-bold cursor-pointer hover:underline hover:text-purple-600" 
+                        title="点击获取路径建议"
+                        onClick={handleKeyClick}
+                    >
+                        {name} {/* UPDATE 3: Removed quotes for cleaner look */}
+                    </span>
+                ) : null;
                 
                 return (
-                    <div>
-                        <div className={rowClass} onClick={toggle}>
-                            <span style={{ width: indent }} className="shrink-0"></span>
-                            {!isEmpty && <span className="mr-1 mt-1 text-slate-400"><Icon children={expanded ? Icons.ChevronDown : Icons.ChevronRight} className="w-3 h-3"/></span>}
-                            {isEmpty && <span className="w-4"></span>}
-                            {label}
-                            {isJsonString && <span className="mr-2 px-1 text-[10px] bg-amber-100 text-amber-800 rounded border border-amber-200">JSON</span>}
-                            <span className="text-slate-500 dark:text-slate-400">{Opening}</span>
-                            {!expanded && !isEmpty && <span className="text-slate-400 mx-2 text-xs">... {keys.length} items ...</span>}
-                            {!expanded && <span className="text-slate-500 dark:text-slate-400">{Closing}{!isLast && ','}</span>}
+                    <div className={`font-code text-sm leading-6 my-0.5 rounded-sm ${blockBg} ${blockBorder} ${highlightClass} transition-colors duration-200`}>
+                        {/* Header Row */}
+                        <div className="flex items-start px-2 py-0.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-t-sm">
+                            {/* Toggle Arrow */}
+                            <span 
+                                onClick={toggle}
+                                className={`mr-1 mt-1 text-slate-400 cursor-pointer hover:text-slate-600 transition-transform ${isEmpty ? 'invisible' : ''}`}
+                            >
+                                <Icon children={expanded ? Icons.ChevronDown : Icons.ChevronRight} className="w-3.5 h-3.5"/>
+                            </span>
+
+                            {/* Key & Opening Bracket */}
+                            <div className="flex-1">
+                                {label}
+                                {name !== null && <span className="mr-1">:</span>}
+                                {isJsonString && <span className="mr-2 px-1 text-[10px] bg-amber-100 text-amber-800 rounded border border-amber-200">JSON</span>}
+                                <span className="text-slate-500 dark:text-slate-400 font-bold">{Opening}</span>
+                                
+                                {/* Collapsed Summary */}
+                                {!expanded && !isEmpty && (
+                                    <span 
+                                        className="text-slate-400 mx-2 text-xs bg-black/5 dark:bg-white/10 px-1.5 rounded cursor-pointer hover:bg-black/10"
+                                        onClick={toggle}
+                                    >
+                                        ... {keys.length} items ...
+                                    </span>
+                                )}
+
+                                {/* Collapsed Closing Bracket */}
+                                {!expanded && <span className="text-slate-500 dark:text-slate-400 font-bold">{Closing}{!isLast && ','}</span>}
+                            </div>
                         </div>
+
+                        {/* Children Block (The Value) */}
                         {expanded && !isEmpty && (
-                            <div>
+                            <div className="pl-4 pr-1 pb-1">
                                 {keys.map((key, idx) => (
-                                    <JsonNode key={key} name={isArray ? null : key} value={actualValue[key]} isLast={idx === keys.length - 1} depth={depth + 1} path={[...path, key]} highlightPath={highlightPath} searchTerm={searchTerm} smartParse={smartParse} />
+                                    <JsonNode 
+                                        key={key} 
+                                        name={isArray ? null : key} 
+                                        value={actualValue[key]} 
+                                        isLast={idx === keys.length - 1} 
+                                        depth={depth + 1} 
+                                        path={[...path, key]} 
+                                        highlightPath={highlightPath} 
+                                        searchTerm={searchTerm} 
+                                        smartParse={smartParse}
+                                        onKeyClick={onKeyClick}
+                                    />
                                 ))}
+                                <div className="text-slate-500 dark:text-slate-400 font-bold pl-1">{Closing}{!isLast && ','}</div>
                             </div>
                         )}
-                        {expanded && (
-                            <div className="hover:bg-slate-100 dark:hover:bg-slate-800">
-                                <span style={{ width: indent + (name !== null ? 0 : 0) }} className="inline-block"></span>
-                                <span className="text-slate-500 dark:text-slate-400 ml-5">{Closing}{!isLast && ','}</span>
-                            </div>
+                         
+                        {/* Empty Object Closing */}
+                        {expanded && isEmpty && (
+                            <div className="pl-8 text-slate-500 dark:text-slate-400 font-bold">{Closing}{!isLast && ','}</div>
                         )}
                     </div>
                 );
             }
 
+            // --- Primitive Rendering ---
             return (
-                <div className={rowClass}>
-                    <span style={{ width: indent }} className="shrink-0"></span>
-                    <span className="w-4"></span>
-                    {name !== null && <span className="text-purple-700 dark:text-purple-400 mr-1">"{name}":</span>}
+                <div className={`flex font-code text-sm leading-6 px-2 py-0.5 rounded-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${highlightClass} ${searchTerm && matchesSearch ? 'bg-blue-100/50 dark:bg-blue-900/30' : ''}`}>
+                    <span className="w-4 shrink-0"></span> {/* Alignment spacer for leaf nodes */}
+                    {name !== null && (
+                        <>
+                            <span 
+                                className="text-purple-700 dark:text-purple-400 mr-0.5 cursor-pointer hover:underline"
+                                onClick={handleKeyClick}
+                            >
+                                {name} {/* Removed quotes */}
+                            </span>
+                            <span className="mr-2">:</span>
+                        </>
+                    )}
                     {renderPrimitive(actualValue)}
                     {!isLast && <span className="text-slate-500">,</span>}
                 </div>
@@ -264,48 +306,36 @@
             const [darkMode, setDarkMode] = useState(false);
             const [jsonStr, setJsonStr] = useState("");
             const [parsedData, setParsedData] = useState(null);
-            const [errorInfo, setErrorInfo] = useState(null); // { message, line }
+            const [errorInfo, setErrorInfo] = useState(null); 
             
             const [path, setPath] = useState("");
+            const [suggestedPath, setSuggestedPath] = useState(null); // New: Suggestion State
             const [pathResult, setPathResult] = useState(null);
             
-            // Panels & Modes
-            const [showHistory, setShowHistory] = useState(false);
             const [showCodeGen, setShowCodeGen] = useState(false);
             const [smartParse, setSmartParse] = useState(false);
             const [searchTerm, setSearchTerm] = useState("");
-            
-            // Splitter
-            const [splitPos, setSplitPos] = useState(50); // percentage
+            const [splitPos, setSplitPos] = useState(50); 
             const isResizing = useRef(false);
-
-            // Bottom Panel
-            const [panelState, setPanelState] = useState('collapsed'); // collapsed, expanded, pinned, maximized
+            const [panelState, setPanelState] = useState('collapsed'); 
             
-            // Refs
             const editorRef = useRef(null);
             const lineRef = useRef(null);
-            const containerRef = useRef(null); // for splitter
+            const containerRef = useRef(null); 
 
-            // --- Effects ---
-            
-            // Dark Mode Class
             useEffect(() => {
                 if (darkMode) document.documentElement.classList.add('dark');
                 else document.documentElement.classList.remove('dark');
             }, [darkMode]);
 
-            // JSON Parsing & Error Highlighting
             useEffect(() => {
                 if (!jsonStr.trim()) { setParsedData(null); setErrorInfo(null); return; }
                 try {
                     const data = JSON.parse(jsonStr);
                     setParsedData(data);
                     setErrorInfo(null);
-                    saveToHistory(jsonStr);
                 } catch (e) {
                     setParsedData(null);
-                    // Extract line number from error message (Chrome/V8 format)
                     const match = e.message.match(/at position (\d+)/);
                     let line = 1;
                     if (match) {
@@ -316,10 +346,8 @@
                 }
             }, [jsonStr]);
 
-            // Path Resolver
             const resolvePathLogic = useCallback(() => {
                 if (!parsedData || !path) { setPathResult(null); return; }
-                // Simple resolver implementation
                 let parts = path.startsWith('/') ? 
                     path.split('/').slice(1).map(p => p.replace(/~1/g, '/')) : 
                     path.replace(/\[(\d+)\]/g, '.$1').split('.');
@@ -340,24 +368,28 @@
 
             useEffect(resolvePathLogic, [parsedData, path]);
 
-            // History Logic (Simplified)
-            const saveToHistory = (content) => {
-                const saved = localStorage.getItem('json_history') || '[]';
-                const list = JSON.parse(saved);
-                if (list.length > 0 && list[0].content === content) return;
-                const newItem = { id: Date.now(), content, time: new Date().toLocaleString() };
-                localStorage.setItem('json_history', JSON.stringify([newItem, ...list].slice(0, 10)));
+            const handleKeyClick = useCallback((keyPath) => {
+                // Construct path string (Jackson Pointer style)
+                const pathStr = "/" + keyPath.join("/");
+                if (pathStr !== path) {
+                    setSuggestedPath(pathStr);
+                }
+            }, [path]);
+
+            const applySuggestion = () => {
+                if (suggestedPath) {
+                    setPath(suggestedPath);
+                    setSuggestedPath(null);
+                    if (panelState === 'collapsed') setPanelState('expanded');
+                }
             };
 
-            // Actions
             const handleFormat = () => { if(parsedData) { setJsonStr(JSON.stringify(parsedData, null, 4)); addToast("已格式化"); }};
             const handleCompress = () => { if(parsedData) { setJsonStr(JSON.stringify(parsedData)); addToast("已压缩"); }};
             const handleClear = () => setJsonStr("");
-            const handleEscape = () => { setJsonStr(JSON.stringify(jsonStr)); addToast("已转义为字符串"); };
+            const handleEscape = () => { setJsonStr(JSON.stringify(jsonStr)); addToast("已转义"); };
             const handleUnescape = () => { try { setJsonStr(JSON.parse(jsonStr)); addToast("已去转义"); } catch(e){ addToast("无法去转义", 'error'); }};
-            const handleCopy = () => { navigator.clipboard.writeText(jsonStr); addToast("源码已复制"); };
             
-            // Drag & Drop
             const handleDrop = (e) => {
                 e.preventDefault();
                 const file = e.dataTransfer.files[0];
@@ -369,7 +401,6 @@
                 }
             };
 
-            // Splitter Logic
             const startResize = (e) => { isResizing.current = true; document.addEventListener('mousemove', handleResize); document.addEventListener('mouseup', stopResize); };
             const stopResize = () => { isResizing.current = false; document.removeEventListener('mousemove', handleResize); document.removeEventListener('mouseup', stopResize); };
             const handleResize = (e) => {
@@ -379,7 +410,6 @@
                 if (newPos > 10 && newPos < 90) setSplitPos(newPos);
             };
 
-            // Scroll Sync
             const handleScroll = (e) => { if (lineRef.current) lineRef.current.scrollTop = e.target.scrollTop; };
 
             return (
@@ -392,36 +422,31 @@
                             <span>Jackson Ultimate</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            {/* Action Group 1: Edit */}
                             <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                                 <button onClick={handleFormat} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-blue-600" title="格式化"><Icon children={Icons.Format}/></button>
                                 <button onClick={handleCompress} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-purple-600" title="压缩"><Icon children={Icons.Compress}/></button>
                                 <button onClick={handleClear} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-red-500" title="清空"><Icon children={Icons.Trash}/></button>
                             </div>
-                            {/* Action Group 2: Utils */}
                             <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                                <button onClick={handleEscape} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-amber-600" title="转义 (Escape)"><Icon children={Icons.Escape}/></button>
-                                <button onClick={handleUnescape} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-amber-600" title="去转义 (Unescape)"><Icon children={Icons.Code}/></button>
-                                <button onClick={() => setShowCodeGen(true)} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-green-600 font-bold text-xs px-3" title="生成 Java Code">POJO</button>
+                                <button onClick={handleEscape} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-amber-600" title="转义"><Icon children={Icons.Escape}/></button>
+                                <button onClick={handleUnescape} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-amber-600" title="去转义"><Icon children={Icons.Code}/></button>
+                                <button onClick={() => setShowCodeGen(true)} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded text-green-600 font-bold text-xs px-3" title="POJO Gen">POJO</button>
                             </div>
-                            {/* Theme Toggle */}
                             <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-blue-500">
                                 <Icon children={darkMode ? Icons.Sun : Icons.Moon} />
                             </button>
                         </div>
                     </div>
 
-                    {/* --- Main Area (Split View) --- */}
+                    {/* --- Main Area --- */}
                     <div className="flex-1 flex overflow-hidden relative" ref={containerRef}>
-                        
-                        {/* LEFT: Editor */}
+                        {/* Editor */}
                         <div style={{ width: `${splitPos}%` }} className="flex flex-col border-r border-slate-200 dark:border-dark-border bg-white dark:bg-dark-bg min-w-[200px]">
                             <div className="h-8 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-dark-border flex items-center px-4 text-xs text-slate-500 font-bold justify-between">
-                                <span>INPUT SOURCE (Drag & Drop Supported)</span>
-                                {errorInfo && <span className="text-red-500 flex items-center gap-1"><Icon children={Icons.Alert} className="w-3 h-3"/> Syntax Error: Line {errorInfo.line}</span>}
+                                <span>INPUT SOURCE</span>
+                                {errorInfo && <span className="text-red-500 flex items-center gap-1"><Icon children={Icons.Alert} className="w-3 h-3"/> Error: Line {errorInfo.line}</span>}
                             </div>
                             <div className="flex-1 relative flex overflow-hidden" onDragOver={e=>e.preventDefault()} onDrop={handleDrop}>
-                                {/* Line Numbers */}
                                 <div className="w-12 bg-slate-50 dark:bg-slate-900 border-r border-slate-100 dark:border-dark-border text-right pr-2 pt-4 text-slate-400 text-xs font-code leading-6 select-none" ref={lineRef}>
                                     {jsonStr.split('\n').map((_, i) => (
                                         <div key={i} className={`${errorInfo?.line === i + 1 ? 'bg-red-100 dark:bg-red-900/50 text-red-600' : ''}`}>{i+1}</div>
@@ -436,17 +461,16 @@
                             </div>
                         </div>
 
-                        {/* RESIZER */}
                         <div className="resizer w-1 bg-slate-200 dark:bg-dark-border hover:bg-blue-400 cursor-col-resize z-10" onMouseDown={startResize}></div>
 
-                        {/* RIGHT: Tree View */}
+                        {/* Tree View */}
                         <div style={{ width: `${100 - splitPos}%` }} className="flex flex-col bg-white dark:bg-dark-bg min-w-[200px]">
                             <div className="h-10 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-dark-border flex items-center px-2 gap-2">
                                 <div className="relative flex-1">
                                     <input 
                                         type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                                         className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none"
-                                        placeholder="搜索节点 Key/Value..."
+                                        placeholder="搜索 Key/Value..."
                                     />
                                     {searchTerm && <span className="absolute right-2 top-1 text-xs text-blue-500 font-bold">Filter Active</span>}
                                 </div>
@@ -461,7 +485,12 @@
                                         <Icon children={Icons.Terminal} className="w-16 h-16 opacity-20"/>
                                         <p className="mt-2 text-sm">Waiting for valid JSON...</p>
                                     </div> : 
-                                    <JsonNode name={null} value={parsedData} isLast={true} highlightPath={pathResult?.status==='found'?pathResult.pathTraversed:[]} searchTerm={searchTerm.toLowerCase()} smartParse={smartParse} />
+                                    <JsonNode 
+                                        name={null} value={parsedData} isLast={true} 
+                                        highlightPath={pathResult?.status==='found'?pathResult.pathTraversed:[]} 
+                                        searchTerm={searchTerm.toLowerCase()} smartParse={smartParse} 
+                                        onKeyClick={handleKeyClick}
+                                    />
                                 }
                             </div>
                         </div>
@@ -471,31 +500,47 @@
                     <div className={`fixed bottom-0 left-0 right-0 bg-white dark:bg-dark-surface border-t border-slate-200 dark:border-dark-border shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-40 transition-all duration-300 flex flex-col`}
                         style={{ height: panelState === 'collapsed' ? '60px' : panelState === 'maximized' ? '100vh' : '400px' }}>
                         
-                        {/* Header / Input Row */}
+                        {/* Suggestion Bubble (Floating above input) */}
+                        {suggestedPath && (
+                            <div className="absolute -top-12 left-4 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                                <button 
+                                    onClick={applySuggestion}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium flex items-center gap-2 group"
+                                >
+                                    <span>路径建议:</span>
+                                    <span className="font-mono bg-black/20 px-2 py-0.5 rounded">{suggestedPath}</span>
+                                    <Icon children={Icons.ArrowUpRight} className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                                </button>
+                                <button 
+                                    onClick={() => setSuggestedPath(null)}
+                                    className="ml-2 bg-slate-200 dark:bg-slate-700 text-slate-500 hover:text-slate-700 rounded-full p-1 shadow-sm"
+                                    title="忽略"
+                                >
+                                    <Icon children={Icons.X} className="w-4 h-4"/>
+                                </button>
+                            </div>
+                        )}
+
                         <div className="h-14 flex items-center px-4 gap-4 bg-slate-50 dark:bg-slate-900 shrink-0">
-                            {/* Toggle Button */}
                             <button onClick={() => setPanelState(s => s === 'collapsed' ? 'expanded' : 'collapsed')} className="text-slate-400 hover:text-blue-500">
                                 <Icon children={panelState === 'collapsed' ? Icons.ChevronDown : Icons.X} className={`w-5 h-5 transition-transform ${panelState==='collapsed'?'rotate-180':''}`}/>
                             </button>
                             
-                            {/* Search Input */}
                             <div className="flex-1 relative group">
                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Icon children={Icons.Search} className="w-4 h-4"/></div>
                                 <input type="text" value={path} onChange={e => setPath(e.target.value)} onFocus={() => panelState==='collapsed' && setPanelState('expanded')}
                                     className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="输入 Path 调试 (如 /data/users/0/name)..." />
+                                    placeholder="输入 Path 调试 (或点击上方 Key 获取建议)..." />
                             </div>
 
-                            {/* Panel Controls */}
                             {panelState !== 'collapsed' && (
                                 <div className="flex gap-2 text-slate-400">
-                                    <button onClick={() => setPanelState(s => s === 'pinned' ? 'expanded' : 'pinned')} className={`p-1 hover:text-blue-500 ${panelState==='pinned'?'text-blue-500':''}`} title="钉住面板"><Icon children={Icons.Pin}/></button>
+                                    <button onClick={() => setPanelState(s => s === 'pinned' ? 'expanded' : 'pinned')} className={`p-1 hover:text-blue-500 ${panelState==='pinned'?'text-blue-500':''}`} title="钉住"><Icon children={Icons.Pin}/></button>
                                     <button onClick={() => setPanelState(s => s === 'maximized' ? 'expanded' : 'maximized')} className={`p-1 hover:text-blue-500 ${panelState==='maximized'?'text-blue-500':''}`} title="最大化"><Icon children={Icons.Maximize}/></button>
                                 </div>
                             )}
                         </div>
 
-                        {/* Result Content */}
                         <div className="flex-1 overflow-auto custom-scroll p-6 bg-white dark:bg-dark-bg">
                             {pathResult?.status === 'found' ? (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
@@ -522,7 +567,6 @@
                         </div>
                     </div>
 
-                    {/* --- Java Code Gen Modal --- */}
                     {showCodeGen && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowCodeGen(false)}>
                             <div className="bg-white dark:bg-dark-surface w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
